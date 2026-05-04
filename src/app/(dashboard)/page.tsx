@@ -22,6 +22,7 @@ async function getHomeData() {
     { data: movimientos },
     { data: clientes },
     { data: ventasGrafico },
+    { data: stockNegativo },
   ] = await Promise.all([
     supabase.from('ventas').select('precio_venta, precio_costo, cantidad').gte('fecha', todayStr).gt('cantidad', 0),
     supabase.from('ventas').select('precio_venta, precio_costo, cantidad, id_cliente').gte('fecha', firstOfMonth).gt('cantidad', 0),
@@ -42,6 +43,11 @@ async function getHomeData() {
       .gte('fecha', firstOfMonth)
       .gt('cantidad', 0)
       .order('fecha'),
+    supabase
+      .from('articulos')
+      .select('id_articulo, nombre, stock_disponible')
+      .eq('activo', 1)
+      .lt('stock_disponible', 0),
   ])
 
   const facturadoHoy = (ventasHoy ?? []).reduce((acc, v) => acc + v.precio_venta * v.cantidad, 0)
@@ -84,6 +90,9 @@ async function getHomeData() {
     .map(([fecha, total]) => ({ fecha, total }))
     .sort((a, b) => a.fecha.localeCompare(b.fecha))
 
+  // Deuda total de toda la cartera
+  const deudaTotal = Array.from(saldoMap.values()).filter(s => s > 0).reduce((acc, s) => acc + s, 0)
+
   return {
     facturadoHoy,
     facturadoMes,
@@ -95,6 +104,8 @@ async function getHomeData() {
     ultimasVentas: ultimasVentas ?? [],
     topDeudores,
     porDia,
+    deudaTotal,
+    stockNegativo: stockNegativo ?? [],
   }
 }
 
@@ -146,17 +157,33 @@ export default async function HomePage() {
           }
         />
         <StatCard
-          label="Sin stock"
-          value={data.sinStockCount.toString()}
-          sub="productos bajo mínimo"
-          color={data.sinStockCount > 0 ? 'red' : 'default'}
+          label="Deuda total cartera"
+          value={formatARS(data.deudaTotal)}
+          sub="cuenta corriente"
+          color={data.deudaTotal > 0 ? 'red' : 'default'}
           icon={
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+              <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
           }
         />
       </div>
+
+      {/* Alerta stock negativo */}
+      {data.stockNegativo.length > 0 && (
+        <div className="bg-red-950/20 border border-red-500/30 rounded-xl px-5 py-4 flex items-start gap-3">
+          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse mt-1.5 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-red-400">
+              {data.stockNegativo.length} producto{data.stockNegativo.length > 1 ? 's' : ''} con stock negativo
+            </p>
+            <p className="text-xs text-red-400/60 mt-0.5">
+              {data.stockNegativo.map((a: any) => a.nombre).join(' · ')}
+            </p>
+            <a href="/stock" className="text-xs text-red-400 underline mt-1 inline-block">Ver en Stock →</a>
+          </div>
+        </div>
+      )}
 
       {/* Gráfico de facturación del mes */}
       <HomeCharts porDia={data.porDia} />

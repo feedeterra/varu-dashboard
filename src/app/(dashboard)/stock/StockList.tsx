@@ -9,7 +9,7 @@ interface StockItem {
   stock_minimo: number
   precio_costo: number
   porcentaje_ganancia: number
-  estado: 'sin_stock' | 'bajo' | 'ok'
+  estado: 'sin_stock' | 'bajo' | 'ok' | 'negativo'
 }
 
 interface Props {
@@ -17,6 +17,7 @@ interface Props {
 }
 
 const estadoConfig = {
+  negativo: { label: 'Negativo', className: 'bg-red-500/20 text-red-300 border border-red-500/40' },
   sin_stock: { label: 'Sin stock', className: 'bg-red-500/10 text-red-400 border border-red-500/20' },
   bajo: { label: 'Bajo mínimo', className: 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' },
   ok: { label: 'OK', className: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' },
