@@ -12,6 +12,7 @@ interface ClienteConStats {
   ticketPromedio: number
   operaciones: number
   ultimaCompra: string | null
+  saldoCC?: number
 }
 
 interface Props {

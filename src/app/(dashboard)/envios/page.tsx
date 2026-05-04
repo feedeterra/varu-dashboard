@@ -1,21 +1,21 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
 import { EnvioForm } from './EnvioForm'
 import { EnviosList } from './EnviosList'
 
 export default async function EnviosPage() {
-  const supabase = await createClient()
+  const supabase = await createServiceClient()
 
   const [{ data: clientes }, { data: articulos }, { data: envios }] = await Promise.all([
     supabase
       .from('clientes')
       .select('id_cliente, razon_social, celular, localidad, activo, fecha_ingreso')
-      .eq('activo', true)
+      .eq('activo', 1)
       .order('razon_social'),
     supabase
       .from('articulos')
       .select('id_articulo, nombre, precio_costo, porcentaje_ganancia, iva, stock_disponible, stock_minimo, activo')
-      .eq('activo', true)
+      .eq('activo', 1)
       .order('nombre'),
     supabase
       .from('envios')

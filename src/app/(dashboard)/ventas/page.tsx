@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
 import { VentasCharts } from './VentasCharts'
 
 type Periodo = 'hoy' | 'semana' | 'mes'
@@ -24,7 +24,7 @@ export default async function VentasPage({
   const periodo = (params.periodo ?? 'mes') as Periodo
   const desde = getPeriodStart(periodo)
 
-  const supabase = await createClient()
+  const supabase = await createServiceClient()
 
   // Últimos 30 días para el gráfico (siempre)
   const treintaDias = new Date()
@@ -36,11 +36,13 @@ export default async function VentasPage({
       .from('ventas')
       .select('fecha, precio_venta, cantidad')
       .gte('fecha', desde30)
+      .gt('cantidad', 0)
       .order('fecha'),
     supabase
       .from('ventas')
       .select('id_articulo, id_cliente, precio_venta, precio_costo, cantidad, articulos(nombre), clientes(razon_social)')
-      .gte('fecha', desde),
+      .gte('fecha', desde)
+      .gt('cantidad', 0),
   ])
 
   // Agrupar por día

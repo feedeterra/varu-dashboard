@@ -1,18 +1,18 @@
-import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
 import { DeudoresList } from './DeudoresList'
 
 export default async function DeudoresPage() {
-  const supabase = await createClient()
+  const supabase = await createServiceClient()
 
   const [{ data: clientes }, { data: movimientos }] = await Promise.all([
     supabase
       .from('clientes')
       .select('id_cliente, razon_social, celular')
-      .eq('activo', true),
+      .eq('activo', 1),
     supabase
       .from('movimientos_cc')
       .select('id_cliente, id_tipo_movimiento, importe_unitario, importe_abonado, cantidad, fecha')
-      .eq('activo', true)
+      .eq('activo', 1)
       .order('fecha', { ascending: false }),
   ])
 
