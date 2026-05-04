@@ -31,9 +31,9 @@ async function getHomeData() {
     supabase.from('ventas').select('precio_venta, precio_costo, cantidad').gte('fecha', todayStr).gt('cantidad', 0),
     supabase.from('ventas').select('precio_venta, precio_costo, cantidad, id_cliente').gte('fecha', firstOfMonth).gt('cantidad', 0),
     supabase.from('ventas').select('precio_venta, cantidad').gte('fecha', firstOfLastMonth).lte('fecha', lastOfLastMonth).gt('cantidad', 0),
-    supabase.from('ventas').select('id_principal, id_movimiento, fecha, cantidad, precio_venta, forma_pago, clientes(razon_social), articulos(nombre)').gte('fecha', todayStr).gt('cantidad', 0).order('id_movimiento', { ascending: false }).limit(100),
+    supabase.from('ventas').select('id_principal, id_movimiento, id_cliente, fecha, cantidad, precio_venta, forma_pago, clientes(razon_social), articulos(nombre)').gte('fecha', todayStr).gt('cantidad', 0).order('id_movimiento', { ascending: false }).limit(100),
     supabase.from('movimientos_cc').select('id_cliente, id_tipo_movimiento, importe_unitario, importe_abonado, cantidad').eq('activo', 1),
-    supabase.from('clientes').select('id_cliente, razon_social, celular').eq('activo', 1),
+    supabase.from('clientes').select('id_cliente, razon_social, celular, localidad').eq('activo', 1),
     supabase.from('ventas').select('fecha, precio_venta, cantidad').gte('fecha', firstOfMonth).gt('cantidad', 0).order('fecha'),
     supabase.from('articulos').select('id_articulo, nombre, stock_disponible').eq('activo', 1).lt('stock_disponible', 0),
     supabase.from('articulos').select('id_articulo, stock_disponible, stock_minimo, precio_costo').eq('activo', 1),
@@ -61,13 +61,15 @@ async function getHomeData() {
   const deudaTotal = Array.from(saldoMap.values()).filter(s => s > 0).reduce((acc, s) => acc + s, 0)
 
   // Agrupar remitos del día por id_movimiento
-  const remitoHoyMap = new Map<number, { cliente: string; total: number; items: string[]; forma_pago: string }>()
+  const clienteMapLocal = new Map((clientes ?? []).map(c => [c.id_cliente, c]))
+  const remitoHoyMap = new Map<number, { cliente: string; localidad: string; total: number; items: string[]; forma_pago: string; id_cliente: number }>()
   for (const v of ultimasVentas ?? []) {
     const cliente = (v as any).clientes?.razon_social ?? '—'
     const nombre = (v as any).articulos?.nombre ?? '—'
     const prev = remitoHoyMap.get(v.id_movimiento)
     if (!prev) {
-      remitoHoyMap.set(v.id_movimiento, { cliente, total: v.precio_venta * v.cantidad, items: [`${nombre} x${v.cantidad}`], forma_pago: v.forma_pago?.toString() ?? '' })
+      const localidad = clienteMapLocal.get(v.id_cliente)?.localidad ?? ''
+      remitoHoyMap.set(v.id_movimiento, { cliente, localidad, id_cliente: v.id_cliente, total: v.precio_venta * v.cantidad, items: [`${nombre} x${v.cantidad}`], forma_pago: v.forma_pago?.toString() ?? '' })
     } else {
       prev.total += v.precio_venta * v.cantidad
       prev.items.push(`${nombre} x${v.cantidad}`)
@@ -75,7 +77,7 @@ async function getHomeData() {
   }
   const remitosHoy = Array.from(remitoHoyMap.values())
 
-  const clienteMap = new Map((clientes ?? []).map(c => [c.id_cliente, c]))
+  const clienteMap = clienteMapLocal
   const topDeudores = Array.from(saldoMap.entries())
     .filter(([, saldo]) => saldo > 500)
     .sort((a, b) => b[1] - a[1])
@@ -275,7 +277,10 @@ export default async function HomePage() {
                         {r.cliente.charAt(0)}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm text-white font-medium truncate">{r.cliente}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm text-white font-medium truncate">{r.cliente}</p>
+                          {r.localidad && <span className="text-[10px] text-[#444] shrink-0">{r.localidad}</span>}
+                        </div>
                         <p className="text-xs text-[#555] truncate">{r.items.slice(0, 2).join(' · ')}{r.items.length > 2 ? ` +${r.items.length - 2} más` : ''}</p>
                       </div>
                     </div>
@@ -336,11 +341,14 @@ export default async function HomePage() {
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs text-white font-medium truncate">{d.razon_social}</p>
-                        {d.celular && (
-                          <a href={`https://wa.me/54${d.celular.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-green-500 hover:text-green-400">
-                            WhatsApp
-                          </a>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {d.localidad && <span className="text-[10px] text-[#444]">{d.localidad}</span>}
+                          {d.celular && (
+                            <a href={`https://wa.me/54${d.celular.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-green-500 hover:text-green-400">
+                              WhatsApp
+                            </a>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <p className="text-xs text-red-400 font-semibold shrink-0">{formatARS(d.saldo)}</p>
