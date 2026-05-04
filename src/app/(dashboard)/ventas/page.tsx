@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createServiceClient } from '@/lib/supabase/server'
 import { VentasCharts } from './VentasCharts'
+import { VentasList } from './VentasList'
 import { formatARS } from '@/lib/utils'
 
 type Periodo = 'hoy' | 'semana' | 'mes'
@@ -14,19 +15,23 @@ function getPeriodStart(periodo: Periodo): string {
   return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0]
 }
 
-export default async function VentasPage({ searchParams }: { searchParams: Promise<{ periodo?: string }> }) {
+export default async function VentasPage({ searchParams }: { searchParams: Promise<{ periodo?: string; vista?: string }> }) {
   const params = await searchParams
   const periodo = (params.periodo ?? 'mes') as Periodo
+  const vista = (params.vista ?? 'graficos') as 'graficos' | 'remitos'
   const desde = getPeriodStart(periodo)
 
   const supabase = await createServiceClient()
-
-  const treintaDias = new Date(); treintaDias.setDate(treintaDias.getDate() - 30)
-  const desde30 = treintaDias.toISOString().split('T')[0]
+  const desde30 = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0] })()
 
   const [{ data: ventasGrafico }, { data: ventasPeriodo }] = await Promise.all([
     supabase.from('ventas').select('fecha, precio_venta, cantidad').gte('fecha', desde30).gt('cantidad', 0).order('fecha'),
-    supabase.from('ventas').select('id_articulo, id_cliente, precio_venta, precio_costo, cantidad, articulos(nombre), clientes(razon_social)').gte('fecha', desde).gt('cantidad', 0),
+    supabase
+      .from('ventas')
+      .select('id_principal, id_movimiento, id_articulo, id_cliente, precio_venta, precio_costo, cantidad, fecha, forma_pago, articulos(nombre), clientes(razon_social)')
+      .gte('fecha', desde)
+      .gt('cantidad', 0)
+      .order('id_movimiento', { ascending: false }),
   ])
 
   // Facturación por día
@@ -62,10 +67,31 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
   }
   const topClientes = Array.from(cliMap.values()).sort((a, b) => b.total - a.total).slice(0, 10)
 
-  // Totales del período
+  // Totales
   const totalFact = (ventasPeriodo ?? []).reduce((acc, v) => acc + v.precio_venta * v.cantidad, 0)
   const totalGanancia = (ventasPeriodo ?? []).filter(v => v.precio_costo > 0).reduce((acc, v) => acc + (v.precio_venta - v.precio_costo) * v.cantidad, 0)
   const sinCostoFact = (ventasPeriodo ?? []).filter(v => !v.precio_costo || v.precio_costo === 0).reduce((acc, v) => acc + v.precio_venta * v.cantidad, 0)
+
+  // Agrupar por remito (id_movimiento)
+  const remitoMap = new Map<number, { id_movimiento: number; cliente: string; fecha: string; total: number; forma_pago: string; items: any[] }>()
+  for (const v of ventasPeriodo ?? []) {
+    const cliente = (v.clientes as any)?.razon_social ?? `ID ${v.id_cliente}`
+    const prev = remitoMap.get(v.id_movimiento)
+    if (!prev) {
+      remitoMap.set(v.id_movimiento, {
+        id_movimiento: v.id_movimiento,
+        cliente,
+        fecha: v.fecha?.split('T')[0] ?? '',
+        total: v.precio_venta * v.cantidad,
+        forma_pago: v.forma_pago?.toString() ?? '',
+        items: [{ id_principal: v.id_principal, nombre: (v.articulos as any)?.nombre ?? `ID ${v.id_articulo}`, cantidad: v.cantidad, precio_venta: v.precio_venta }],
+      })
+    } else {
+      prev.total += v.precio_venta * v.cantidad
+      prev.items.push({ id_principal: v.id_principal, nombre: (v.articulos as any)?.nombre ?? `ID ${v.id_articulo}`, cantidad: v.cantidad, precio_venta: v.precio_venta })
+    }
+  }
+  const remitos = Array.from(remitoMap.values())
 
   const periodos: { value: Periodo; label: string }[] = [
     { value: 'hoy', label: 'Hoy' },
@@ -75,20 +101,35 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold text-white">Ventas</h1>
-        <div className="flex gap-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-1">
-          {periodos.map(p => (
-            <a key={p.value} href={`/ventas?periodo=${p.value}`}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${periodo === p.value ? 'bg-blue-600 text-white' : 'text-[#555] hover:text-white'}`}>
-              {p.label}
+        <div className="flex gap-2 flex-wrap">
+          {/* Vista toggle */}
+          <div className="flex gap-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-1">
+            <a href={`/ventas?periodo=${periodo}&vista=graficos`}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${vista === 'graficos' ? 'bg-blue-600 text-white' : 'text-[#555] hover:text-white'}`}>
+              Gráficos
             </a>
-          ))}
+            <a href={`/ventas?periodo=${periodo}&vista=remitos`}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${vista === 'remitos' ? 'bg-blue-600 text-white' : 'text-[#555] hover:text-white'}`}>
+              Remitos
+            </a>
+          </div>
+          {/* Período */}
+          <div className="flex gap-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-1">
+            {periodos.map(p => (
+              <a key={p.value} href={`/ventas?periodo=${p.value}&vista=${vista}`}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${periodo === p.value ? 'bg-[#333] text-white' : 'text-[#555] hover:text-white'}`}>
+                {p.label}
+              </a>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Resumen del período */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4">
           <p className="text-xs text-[#444] uppercase tracking-wider mb-1">Facturado</p>
           <p className="text-2xl font-bold text-white">{formatARS(totalFact)}</p>
@@ -96,20 +137,27 @@ export default async function VentasPage({ searchParams }: { searchParams: Promi
         <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4">
           <p className="text-xs text-[#444] uppercase tracking-wider mb-1">Ganancia bruta</p>
           <p className="text-2xl font-bold text-emerald-400">{formatARS(totalGanancia)}</p>
-          {sinCostoFact > 0 && (
-            <p className="text-xs text-yellow-500 mt-1">{formatARS(sinCostoFact)} sin costo cargado</p>
-          )}
+          {sinCostoFact > 0 && <p className="text-xs text-yellow-500 mt-1">{formatARS(sinCostoFact)} sin costo</p>}
         </div>
         <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4">
           <p className="text-xs text-[#444] uppercase tracking-wider mb-1">Margen promedio</p>
           <p className="text-2xl font-bold text-blue-400">
             {totalFact > 0 && totalGanancia > 0 ? `${Math.round((totalGanancia / totalFact) * 100)}%` : '—'}
           </p>
-          <p className="text-xs text-[#444] mt-1">sobre productos con costo</p>
+        </div>
+        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4">
+          <p className="text-xs text-[#444] uppercase tracking-wider mb-1">Remitos</p>
+          <p className="text-2xl font-bold text-white">{remitos.length}</p>
+          <p className="text-xs text-[#444] mt-1">{(ventasPeriodo ?? []).length} líneas</p>
         </div>
       </div>
 
-      <VentasCharts porDia={porDia} topProductos={topProductos} topClientes={topClientes} />
+      {/* Vista: gráficos o remitos */}
+      {vista === 'graficos' ? (
+        <VentasCharts porDia={porDia} topProductos={topProductos} topClientes={topClientes} />
+      ) : (
+        <VentasList remitos={remitos} />
+      )}
     </div>
   )
 }
