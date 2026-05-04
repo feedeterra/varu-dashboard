@@ -244,7 +244,6 @@ export default async function HomePage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-green-500 hover:text-green-400"
-                          onClick={e => e.stopPropagation()}
                         >
                           WhatsApp
                         </a>
