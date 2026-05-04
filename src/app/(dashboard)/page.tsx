@@ -31,7 +31,7 @@ async function getHomeData() {
     supabase.from('ventas').select('precio_venta, precio_costo, cantidad').gte('fecha', todayStr).gt('cantidad', 0),
     supabase.from('ventas').select('precio_venta, precio_costo, cantidad, id_cliente').gte('fecha', firstOfMonth).gt('cantidad', 0),
     supabase.from('ventas').select('precio_venta, cantidad').gte('fecha', firstOfLastMonth).lte('fecha', lastOfLastMonth).gt('cantidad', 0),
-    supabase.from('ventas').select('id_principal, id_movimiento, fecha, cantidad, precio_venta, forma_pago, clientes(razon_social), articulos(nombre)').gte('fecha', todayStr).gt('cantidad', 0).order('id_principal', { ascending: false }).limit(20),
+    supabase.from('ventas').select('id_principal, id_movimiento, fecha, cantidad, precio_venta, forma_pago, clientes(razon_social), articulos(nombre)').gte('fecha', todayStr).gt('cantidad', 0).order('id_movimiento', { ascending: false }).limit(100),
     supabase.from('movimientos_cc').select('id_cliente, id_tipo_movimiento, importe_unitario, importe_abonado, cantidad').eq('activo', 1),
     supabase.from('clientes').select('id_cliente, razon_social, celular').eq('activo', 1),
     supabase.from('ventas').select('fecha, precio_venta, cantidad').gte('fecha', firstOfMonth).gt('cantidad', 0).order('fecha'),
@@ -59,6 +59,21 @@ async function getHomeData() {
     else if (m.id_tipo_movimiento === 3) saldoMap.set(m.id_cliente, prev - (m.importe_abonado ?? 0))
   }
   const deudaTotal = Array.from(saldoMap.values()).filter(s => s > 0).reduce((acc, s) => acc + s, 0)
+
+  // Agrupar remitos del día por id_movimiento
+  const remitoHoyMap = new Map<number, { cliente: string; total: number; items: string[]; forma_pago: string }>()
+  for (const v of ultimasVentas ?? []) {
+    const cliente = (v as any).clientes?.razon_social ?? '—'
+    const nombre = (v as any).articulos?.nombre ?? '—'
+    const prev = remitoHoyMap.get(v.id_movimiento)
+    if (!prev) {
+      remitoHoyMap.set(v.id_movimiento, { cliente, total: v.precio_venta * v.cantidad, items: [`${nombre} x${v.cantidad}`], forma_pago: v.forma_pago?.toString() ?? '' })
+    } else {
+      prev.total += v.precio_venta * v.cantidad
+      prev.items.push(`${nombre} x${v.cantidad}`)
+    }
+  }
+  const remitosHoy = Array.from(remitoHoyMap.values())
 
   const clienteMap = new Map((clientes ?? []).map(c => [c.id_cliente, c]))
   const topDeudores = Array.from(saldoMap.entries())
@@ -123,7 +138,7 @@ async function getHomeData() {
   return {
     facturadoHoy, facturadoMes, facturadoMesAnterior, variacionMes,
     gananciaMes, clientesUnicos, deudaTotal,
-    ultimasVentas: ultimasVentas ?? [],
+    remitosHoy,
     topDeudores, porDia, tareas,
     stockNegativoCount: (stockNegativo ?? []).length,
   }
@@ -193,7 +208,7 @@ export default async function HomePage() {
                 </svg>
               </div>
               <p className="text-2xl font-bold text-white">{formatARS(data.facturadoHoy)}</p>
-              <p className="text-xs text-blue-400/50 mt-1">{data.ultimasVentas.length} remitos hoy</p>
+              <p className="text-xs text-blue-400/50 mt-1">{data.remitosHoy.length} remitos hoy</p>
             </div>
 
             {/* Facturado mes */}
@@ -244,26 +259,27 @@ export default async function HomePage() {
           <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden">
             <div className="px-5 py-4 border-b border-[#222] flex items-center justify-between">
               <h2 className="text-sm font-semibold text-white">Remitos del día</h2>
-              <a href="/ventas" className="text-xs text-blue-500 hover:text-blue-400 transition-colors">Ver todos →</a>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-[#444]">{data.remitosHoy.length} remitos</span>
+                <a href="/ventas?vista=remitos" className="text-xs text-blue-500 hover:text-blue-400 transition-colors">Ver todos →</a>
+              </div>
             </div>
-            {data.ultimasVentas.length === 0 ? (
+            {data.remitosHoy.length === 0 ? (
               <div className="px-5 py-10 text-center text-[#444] text-sm">Sin ventas registradas hoy</div>
             ) : (
               <div className="divide-y divide-[#1f1f1f]">
-                {data.ultimasVentas.slice(0, 8).map((v: any) => (
-                  <div key={v.id_principal} className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-[#1f1f1f] transition-colors">
+                {data.remitosHoy.slice(0, 8).map((r: any, i: number) => (
+                  <div key={i} className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-[#1f1f1f] transition-colors">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-7 h-7 rounded-full bg-[#222] flex items-center justify-center text-xs font-bold text-[#555] shrink-0">
-                        {(v.clientes?.razon_social ?? '?').charAt(0)}
+                        {r.cliente.charAt(0)}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm text-white font-medium truncate">{v.clientes?.razon_social ?? '—'}</p>
-                        <p className="text-xs text-[#555] truncate">{v.articulos?.nombre ?? '—'} · x{v.cantidad}</p>
+                        <p className="text-sm text-white font-medium truncate">{r.cliente}</p>
+                        <p className="text-xs text-[#555] truncate">{r.items.slice(0, 2).join(' · ')}{r.items.length > 2 ? ` +${r.items.length - 2} más` : ''}</p>
                       </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm text-white font-semibold">{formatARS(v.precio_venta * v.cantidad)}</p>
-                    </div>
+                    <p className="text-sm text-white font-semibold shrink-0">{formatARS(r.total)}</p>
                   </div>
                 ))}
               </div>
