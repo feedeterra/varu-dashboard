@@ -171,17 +171,17 @@ export default async function HomePage() {
 
       {/* Alerta stock negativo */}
       {data.stockNegativo.length > 0 && (
-        <div className="bg-red-950/20 border border-red-500/30 rounded-xl px-5 py-4 flex items-start gap-3">
-          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse mt-1.5 shrink-0" />
-          <div>
-            <p className="text-sm font-semibold text-red-400">
-              {data.stockNegativo.length} producto{data.stockNegativo.length > 1 ? 's' : ''} con stock negativo
-            </p>
-            <p className="text-xs text-red-400/60 mt-0.5">
-              {data.stockNegativo.map((a: any) => a.nombre).join(' · ')}
-            </p>
-            <a href="/stock" className="text-xs text-red-400 underline mt-1 inline-block">Ver en Stock →</a>
+        <div className="bg-red-950/20 border border-red-500/30 rounded-xl px-5 py-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-red-400">
+                {data.stockNegativo.length} productos con stock negativo
+              </p>
+              <p className="text-xs text-red-400/50 mt-0.5">Posibles ventas sin existencia o diferencias de inventario</p>
+            </div>
           </div>
+          <a href="/stock" className="text-xs text-red-400 hover:text-red-300 shrink-0 underline">Ver detalle →</a>
         </div>
       )}
 

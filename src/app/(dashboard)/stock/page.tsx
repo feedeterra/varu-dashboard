@@ -52,8 +52,11 @@ export default async function StockPage() {
     .sort((a, b) => (a.diasRestantes ?? 999) - (b.diasRestantes ?? 999))
     .slice(0, 20)
 
-  // Stock negativo
-  const stockNegativo = items.filter(a => a.estado === 'negativo')
+  // Stock negativo — ordenado por mayor diferencia, máximo 10 en el panel
+  const stockNegativo = items
+    .filter(a => a.estado === 'negativo')
+    .sort((a, b) => a.stock_disponible - b.stock_disponible)
+    .slice(0, 10)
 
   // Capital inmovilizado: stock > 30, 0 ventas en 90d, precio_costo > 0
   const capitalInmovilizado = items
@@ -66,7 +69,7 @@ export default async function StockPage() {
   const sinStock = items.filter(a => a.estado === 'sin_stock').length
   const bajo = items.filter(a => a.estado === 'bajo').length
   const ok = items.filter(a => a.estado === 'ok').length
-  const negativo = stockNegativo.length
+  const negativo = items.filter(a => a.estado === 'negativo').length
 
   return (
     <div className="p-6 space-y-6">
@@ -100,9 +103,12 @@ export default async function StockPage() {
       {/* Stock negativo */}
       {stockNegativo.length > 0 && (
         <div className="bg-red-950/20 border border-red-500/30 rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-red-500/20 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <h2 className="text-sm font-semibold text-red-400">Stock negativo — productos vendidos sin existencia</h2>
+          <div className="px-5 py-4 border-b border-red-500/20 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <h2 className="text-sm font-semibold text-red-400">Stock negativo — {negativo} productos</h2>
+            </div>
+            <span className="text-xs text-red-400/50">Mostrando los 10 con mayor diferencia</span>
           </div>
           <div className="divide-y divide-red-500/10">
             {stockNegativo.map(a => (
